@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+
+from fileinput import filename
+from re import sub
+import sys, os, glob, fnmatch
+# import pycode_similar as pysim
+import shutil
+import subprocess
+import argparse
+import ast, traceback
+from difflib import SequenceMatcher as sm
+
+'''
+November 2021: trying to improve this. pycode_similar not giving good results. Attempt is: difflib.Sequencematcher
+'''
+
+
+user_list = []
+test_set = set()
+
+def get_args():
+    "invoke argparse, passes to obj in global scope"
+    parser = argparse.ArgumentParser(description="checks for submission similarity, plaigiarism",epilog="Copyright 2020 - Eric Brauer")
+    parser.add_argument("-p", "--pattern", default='*.py', help="specify wildcard pattern for files to check. Ex: 'a2_*.py'")
+    parser.add_argument("-x", "--exclude", default='*check*.py', help="specify wildcard pattern for files to ignore, like check scripts. Ex: 'checkA2.py'")
+    parser.add_argument("-t", "--threshold", type=float, default='80', help="When to spawn alert, in percent similarity. Default is 80.")
+    parser.add_argument("target_directory", nargs='?', help="directory to find student code")
+    args = parser.parse_args() 
+    if args.target_directory == None:
+        args.target_directory = os.getcwd()
+    if not os.path.isdir(args.target_directory):
+        print("Please enter a valid file path.")
+        sys.exit(1)
+    return args
+
+def get_user_dir_list(target):
+    "return a list of user directories"  # TODO: improve. directory doesn't exist, etc.
+    if os.access(target, os.R_OK):
+        try:
+            return os.listdir(target)
+        except PermissionError:
+            print("You do not have permission to view the target directory.")
+            sys.exit(1)
+
+def get_file_list(args):
+    "this is an alternate method to get applicable files"
+    target_dir = args.target_directory
+    pattern = args.pattern
+    exclude = args.exclude
+    # print(target_dir)
+    # print('Pattern: ' + pattern)
+    # print('Excluding: ' + exclude)
+    new_list = list()
+    for root, dirs, files in os.walk(target_dir):
+        for file in files:
+            if not fnmatch.fnmatch(file, pattern):
+                continue
+            elif fnmatch.fnmatch(file, exclude):
+                continue
+            else:
+                path = os.path.join(root, file)
+                new_list.append(path)
+    # print(f'Found {len(new_list)} files to test.')
+    return new_list
+
+def compare_two_files(f1, f2):
+    "new for nov 2021: file comparison using difflib approach"
+    if f1 != f2:
+        with open(f1) as file1:
+            # c1 = file1.read()
+            c1 = filter_comments_from_py(file1)
+        with open(f2) as file2:
+            # c2 = file2.read()
+            c2 = filter_comments_from_py(file2)
+        m = sm(None, c1, c2)
+        return m.ratio()
+    return 0
+
+def file_contains_errors(file_to_test):
+    "second attempt to check for errors"
+    print(file_to_test)
+    with open(file_to_test) as f:
+        source = f.read()
+    valid = True
+    try:
+        ast.parse(source)
+    except (SyntaxError, IndentationError):
+        valid = False
+        traceback.print_exc()  # Remove to silence any errros
+    except:
+        valid = False
+    return valid 
+
+def get_unique_relationships(filename_list):
+    "from a list, get all unique one-to-one relationships between files"
+    # print(len(filename_list))
+    outer = set()  # using sets to filter duplicates
+    for target in filename_list:
+        for candidate in filename_list:
+            if target == candidate:  # don't match file with itself
+                pass
+            else:
+                inner = frozenset((target, candidate))  # these are hashable, allow nesting
+                outer.add(inner)
+    # for item in outer:
+    #     print(item)
+    # print(len(outer))
+    return outer
+
+def calculate_scores(outer_set):
+    "take our uniques, call_pysim, return dict. key is the filenames, value is pcnt"
+    rtrn_dict = {}  # {(f1, f2):99, etc.}
+    for filenames in outer_set:
+        filenames = tuple(filenames)  # needs to hashable
+        # pcnt = call_pysim_proc(filenames[0], filenames[1])  
+        pcnt = compare_two_files(filenames[0], filenames[1])
+        if pcnt == None:
+            pcnt = 0
+        rtrn_dict[filenames] = float(pcnt)
+    return rtrn_dict
+
+def call_pysim_proc(f1, f2):
+    "I'm doing this b/c the lib is throwin errors and I'm fed up"
+    call_list = ["pycode_similar"]
+    call_list.append(f1)
+    call_list.append(f2)
+    try:
+        result = subprocess.run(call_list, capture_output=True, check=True)
+    except subprocess.CalledProcessError:
+        print("WARNING: pycode_similar has thrown error checking: " + f1 + " with " + f2)
+        return float(0)
+    proc = result.stdout.decode('utf-8').strip()
+    outlines = proc.split('\n')
+    for line in outlines:
+        if 'of ref code structure is plagiarized by candidate' in line:
+            split_it = line.split(' ')
+            pcnt = float(split_it[0])/100
+            # print(pcnt)
+            return pcnt
+
+
+def print_file_results(flist, threshold):
+    target_dir = args.target_directory
+    while len(flist) > 1:
+        target = flist[0]
+        flist.remove(target)
+        short_target = target.replace(target_dir, '')
+        print("Summary for " + short_target)
+        print('-'*(len(short_target)+12))
+        for candidate in flist:
+            percent = call_pysim_proc(target, candidate)
+            if percent is not None and percent/100 > threshold:
+                print("Match found: " + candidate.replace(target_dir, '') + " has a match of " + str(percent) + " %.")
+
+def parse_filename(fname):
+    "break filename into tuple"
+    bname = os.path.basename(fname)
+    _, file = os.path.split(fname)
+    try:
+        lst = file.split('_')
+        task = lst[0]
+        stname = lst[1]
+        labfile = lst[-1]
+        if stname == labfile:
+            stname = ""
+    except (ValueError, IndexError):
+        task = ""
+        stname = ""
+        labfile = file
+    return (bname, task, stname, labfile)
+
+def filter_comments_from_py(file_obj):
+    "given a file object, remove docstrings and inline comments"
+    docreg = r"[\'\"]{3}(.|\n)+?[\'\"]{3}"  # filter between """ or '''
+    comreg = r"#(\w|\s)*\n"  # filter # to end of line
+    raw = file_obj.read()
+    raw = sub(docreg, '', raw)
+    raw = sub(comreg, '\n', raw) 
+    return raw
+
+
+def print_dict_results(rdict, threshold):
+    "all that hard work pays off"
+    global args
+    width = shutil.get_terminal_size(fallback=(160, 24)).columns  # not using this, print relative paths instead
+    middle = 20
+    lr = int((width - middle) / 2)
+    # print(lr)
+    for w in sorted(rdict, key=rdict.get, reverse=True):  # sort the dict by value (pcnt), hi to lo
+        if rdict[w] >= threshold:
+            common = os.path.commonpath([w[0], w[1]])
+            lb = os.path.relpath(w[0], start=common)
+            _, lt, ls, lfile = parse_filename(w[0]) # lb/rb are returning complete filename
+            if ls == "":  # if filename parsing fails,
+                left = f"{lb}"[lr * -1:]  # print just the filename
+            else:
+                left = f"{ls}: {lfile}"[lr * -1:]  # lr*-1: cuts off start
+            rb = os.path.relpath(w[1], start=common)
+            _, rt, rs, rfile = parse_filename(w[1])
+            if rs == "":
+                right = f"{rb}"[lr * -1:]
+            else:
+                right = f"{rs}: {rfile}"[lr * -1:]
+
+            midstring = rdict[w]
+            print(f"{left : >30}\t{midstring : ^.1%}\t{right : <30}")
+    
+
+
+if __name__ == '__main__':
+    args = get_args()
+    threshold = args.threshold
+    if 1.0 <= threshold < 100:  # if user gives pcnt in range 0-100
+        threshold /= 100  # change to 0.0-1.0
+    print(f"Testing with a threshold of {threshold : .1%}.")
+    test_list = get_file_list(args)
+    if len(test_list) <= 1:
+        print('No files to analyze.')
+        exit(1)
+    errorlist = []  # this will store the files excluded b/c non-zero exit codes
+    # print('The following files contain errors and will be excluded from testing:')
+    # # for tfile in test_list:
+    # #     if file_contains_errors(tfile):
+    # #         print(os.path.relpath(tfile, args.target_directory))
+    # #         # test_list.remove(tfile)  # 
+    # #         errorlist.append(tfile)
+    # print('Files excluded: ')
+    # print(errorlist)
+    # print(len(errorlist))
+    print('Files to test: ' + str(len(test_list)))
+    # input()
+    uniques = get_unique_relationships(test_list)
+    results = calculate_scores(uniques)
+    print_dict_results(results, threshold)
+    # print_file_results(test_list, threshold)
+    #print("{} is {:6.2f} %% in common with {}.".format(file1, rtrn_percent*100, file2))
