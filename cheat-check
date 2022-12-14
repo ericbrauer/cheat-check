@@ -71,14 +71,40 @@ def compare_two_files(f1, f2):
         with open(f1) as file1:
             # c1 = file1.read()
             c1 = filter_comments_from_py(file1)
-            c1 = strip_nonkw(c1)
+            c1l = c1.splitlines()
+            c1ln = []
+            for line in c1l:
+                c1ln.append(strip_nonkw(line))
         with open(f2) as file2:
             # c2 = file2.read()
             c2 = filter_comments_from_py(file2)
-            c2 = strip_nonkw(c2)
-        m = sm(None, c1, c2)
-        return m.ratio()
+            c2l = c2.splitlines()
+            c2ln = []
+            for line in c2l:
+                c2ln.append(strip_nonkw(line))
+        # m = sm(None, c1, c2)
+        # return m.ratio()
+        return new_ratio(c1ln, c2ln)
     return 0
+
+def new_ratio(c1: list, c2: list) -> float:
+    "compare two files, return a value of % in common"
+    total = max(len(c1), len(c2))  # the longest file in number of lines creates total
+    c1s = set(c1)
+    c2s = set(c2)
+    x = 0
+    if len(c1s) >= len(c2s):
+        largest = c1s
+        smallest = c2s
+    else:
+        largest = c2s
+        smallest = c1s
+    for line in largest:
+        if line in smallest:
+            x += 1
+    result = x / total
+    return result
+
 
 def strip_nonkw(c1: str) -> str:
     "strips out all var names"
