@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from fileinput import filename
-from re import sub
+from re import sub, match, findall
 import sys, os, glob, fnmatch
 # import pycode_similar as pysim
 import shutil
@@ -9,6 +9,7 @@ import subprocess
 import argparse
 import ast, traceback
 from difflib import SequenceMatcher as sm
+from keyword import iskeyword
 
 '''
 November 2021: trying to improve this. pycode_similar not giving good results. Attempt is: difflib.Sequencematcher
@@ -24,6 +25,7 @@ def get_args():
     parser.add_argument("-p", "--pattern", default='*.py', help="specify wildcard pattern for files to check. Ex: 'a2_*.py'")
     parser.add_argument("-x", "--exclude", default='*check*.py', help="specify wildcard pattern for files to ignore, like check scripts. Ex: 'checkA2.py'")
     parser.add_argument("-t", "--threshold", type=float, default='80', help="When to spawn alert, in percent similarity. Default is 80.")
+    parser.add_argument("-f", "--target-file", help="when you want to compare all other instances to a target file. Can improve performance.")
     parser.add_argument("target_directory", nargs='?', help="directory to find student code")
     args = parser.parse_args() 
     if args.target_directory == None:
@@ -69,12 +71,24 @@ def compare_two_files(f1, f2):
         with open(f1) as file1:
             # c1 = file1.read()
             c1 = filter_comments_from_py(file1)
+            c1 = strip_nonkw(c1)
         with open(f2) as file2:
             # c2 = file2.read()
             c2 = filter_comments_from_py(file2)
+            c2 = strip_nonkw(c2)
         m = sm(None, c1, c2)
         return m.ratio()
     return 0
+
+def strip_nonkw(c1: str) -> str:
+    "strips out all var names"
+    wordreg = r'\w+'
+    lst = findall(wordreg, c1)
+    raw = c1
+    for word in lst:
+        if not iskeyword(word):
+            raw = sub(word, '', raw, count=1)
+    return raw
 
 def file_contains_errors(file_to_test):
     "second attempt to check for errors"
@@ -102,6 +116,21 @@ def get_unique_relationships(filename_list):
             else:
                 inner = frozenset((target, candidate))  # these are hashable, allow nesting
                 outer.add(inner)
+    # for item in outer:
+    #     print(item)
+    # print(len(outer))
+    return outer
+
+def get_target_relationships(filename_list, target):
+    "when specifying a target, get all unique one-to-one relationships to it"
+    # print(len(filename_list))
+    outer = set()  # using sets to filter duplicates
+    for candidate in filename_list:
+        if target == candidate:  # don't match file with itself
+            pass
+        else:
+            inner = frozenset((target, candidate))  # these are hashable, allow nesting
+            outer.add(inner)
     # for item in outer:
     #     print(item)
     # print(len(outer))
@@ -229,7 +258,10 @@ if __name__ == '__main__':
     # print(len(errorlist))
     print('Files to test: ' + str(len(test_list)))
     # input()
-    uniques = get_unique_relationships(test_list)
+    if args.target_file:
+        uniques = get_target_relationships(test_list, args.target_file)
+    else:
+        uniques = get_unique_relationships(test_list)
     results = calculate_scores(uniques)
     print_dict_results(results, threshold)
     # print_file_results(test_list, threshold)
