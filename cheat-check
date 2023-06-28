@@ -25,7 +25,9 @@ def get_args():
     parser.add_argument("-p", "--pattern", default='*.py', help="specify wildcard pattern for files to check. Ex: 'a2_*.py'")
     parser.add_argument("-x", "--exclude", default='*check*.py', help="specify wildcard pattern for files to ignore, like check scripts. Ex: 'checkA2.py'")
     parser.add_argument("-t", "--threshold", type=float, default='80', help="When to spawn alert, in percent similarity. Default is 80.")
+    parser.add_argument("-b", "--bytes", type=int, help="sets a minimum byte size for comparisons. Use this to filter out assignments with no new code.")
     parser.add_argument("-f", "--target-file", help="when you want to compare all other instances to a target file. Can improve performance.")
+    parser.add_argument("-s", "--static-output", action="store_true", help="Outputs results to standard output, as opposed to a menu for analysis. Menu not yet implemented.")
     parser.add_argument("target_directory", nargs='?', help="directory to find student code")
     args = parser.parse_args() 
     if args.target_directory == None:
@@ -71,20 +73,13 @@ def compare_two_files(f1, f2):
         with open(f1) as file1:
             # c1 = file1.read()
             c1 = filter_comments_from_py(file1)
-            c1l = c1.splitlines()
-            c1ln = []
-            for line in c1l:
-                c1ln.append(strip_nonkw(line))
+            # c1 = strip_nonkw(c1)
         with open(f2) as file2:
             # c2 = file2.read()
             c2 = filter_comments_from_py(file2)
-            c2l = c2.splitlines()
-            c2ln = []
-            for line in c2l:
-                c2ln.append(strip_nonkw(line))
-        # m = sm(None, c1, c2)
-        # return m.ratio()
-        return new_ratio(c1ln, c2ln)
+            #c2 = strip_nonkw(c2)
+        m = sm(None, c1, c2)
+        return m.ratio()
     return 0
 
 def new_ratio(c1: list, c2: list) -> float:
@@ -241,7 +236,7 @@ def print_dict_results(rdict, threshold):
     middle = 20
     lr = int((width - middle) / 2)
     # print(lr)
-    for w in sorted(rdict, key=rdict.get, reverse=True):  # sort the dict by value (pcnt), hi to lo
+    for index, w in enumerate(sorted(rdict, key=rdict.get, reverse=True), start=1):  # sort the dict by value (pcnt), hi to lo
         if rdict[w] >= threshold:
             common = os.path.commonpath([w[0], w[1]])
             lb = os.path.relpath(w[0], start=common)
@@ -258,9 +253,15 @@ def print_dict_results(rdict, threshold):
                 right = f"{rs}: {rfile}"[lr * -1:]
 
             midstring = rdict[w]
-            print(f"{left : >30}\t{midstring : ^.1%}\t{right : <30}")
+            print(f"{index:>3}. {left : >30}\t{midstring : ^.1%}\t{right : <30}")
     
-
+    
+def filter_out_smalls(input, bytes):
+    "if a filesize is less than what's specified, remove from set"
+    for file in input:
+        if os.path.getsize(file) <= bytes:
+            input.remove(file)
+    return input
 
 if __name__ == '__main__':
     args = get_args()
@@ -282,6 +283,8 @@ if __name__ == '__main__':
     # print('Files excluded: ')
     # print(errorlist)
     # print(len(errorlist))
+    if args.bytes:
+        test_list = filter_out_smalls(test_list, args.bytes)
     print('Files to test: ' + str(len(test_list)))
     # input()
     if args.target_file:
@@ -290,5 +293,8 @@ if __name__ == '__main__':
         uniques = get_unique_relationships(test_list)
     results = calculate_scores(uniques)
     print_dict_results(results, threshold)
+    
+
+
     # print_file_results(test_list, threshold)
     #print("{} is {:6.2f} %% in common with {}.".format(file1, rtrn_percent*100, file2))
