@@ -10,6 +10,7 @@ import argparse
 import ast, traceback
 from difflib import SequenceMatcher as sm
 from keyword import iskeyword
+import display as d
 
 '''
 November 2021: trying to improve this. pycode_similar not giving good results. Attempt is: difflib.Sequencematcher
@@ -17,7 +18,8 @@ November 2023: more TODOs
 TODO ability to run a diff directly on both files
     create a .config file where executable is stored
     finally do packaging.
-TODO migrate viewers into a different module
+DONE migrate viewers into a different module
+done lol, percentage goes up depending on which file is first. see ldevassy @ 58.9% vs sjohn @ 44.3%
 TODO revisit the idea of improved diff checking by stripping out all non-keywords
 TODO use a class rather than frozenset/tuple/whatever the fuck it is here
 TODO add more comments
@@ -71,7 +73,8 @@ def compare_two_files(f1, f2):
         with open(f2) as file2:
             c2 = filter_comments_from_py(file2)
         m = sm(None, c1, c2)
-        return m.ratio()
+        m2 = sm(None, c2, c1)
+        return max(m.ratio(), m2.ratio())
     return 0
 
 def new_ratio(c1: list, c2: list) -> float:
@@ -152,25 +155,6 @@ def calculate_scores(outer_set):
         rtrn_dict[filenames] = float(pcnt)
     return rtrn_dict
 
-def parse_filename(fname):
-    "break filename into tuple"
-    '''
-    This would have worked only with blackboard submission, but not with github submissions. so you can probably removed it.
-    '''
-    bname = os.path.basename(fname)
-    _, file = os.path.split(fname)
-    try:
-        lst = file.split('_')
-        task = lst[0]
-        stname = lst[1]
-        labfile = lst[-1]
-        if stname == labfile:
-            stname = ""
-    except (ValueError, IndexError):
-        task = ""
-        stname = ""
-        labfile = file
-    return (bname, task, stname, labfile)
 
 def filter_comments_from_py(file_obj):
     "given a file object, remove docstrings and inline comments"
@@ -182,30 +166,6 @@ def filter_comments_from_py(file_obj):
     return raw
 
 
-def print_dict_results(rdict, threshold):
-    "all that hard work pays off"
-    global args
-    width = shutil.get_terminal_size(fallback=(160, 24)).columns  # not using this, print relative paths instead
-    middle = 20
-    lr = int((width - middle) / 2)
-    for index, w in enumerate(sorted(rdict, key=rdict.get, reverse=True), start=1):  # sort the dict by value (pcnt), hi to lo
-        if rdict[w] >= threshold:
-            common = os.path.commonpath([w[0], w[1]])
-            lb = os.path.relpath(w[0], start=common)
-            _, lt, ls, lfile = parse_filename(w[0]) # lb/rb are returning complete filename
-            if ls == "":  # if filename parsing fails,
-                left = f"{lb}"[lr * -1:]  # print just the filename
-            else:
-                left = f"{ls}: {lfile}"[lr * -1:]  # lr*-1: cuts off start
-            rb = os.path.relpath(w[1], start=common)
-            _, rt, rs, rfile = parse_filename(w[1])
-            if rs == "":
-                right = f"{rb}"[lr * -1:]
-            else:
-                right = f"{rs}: {rfile}"[lr * -1:]
-
-            midstring = rdict[w]
-            print(f"{index:>3}. {left : >30}\t{midstring : ^.1%}\t{right : <30}")
     
     
 def filter_out_smalls(input, bytes):
@@ -234,4 +194,4 @@ if __name__ == '__main__':
     else:
         uniques = get_unique_relationships(test_list)
     results = calculate_scores(uniques)
-    print_dict_results(results, threshold)
+    d.print_dict_results(results, threshold)
