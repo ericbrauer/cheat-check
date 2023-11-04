@@ -13,6 +13,13 @@ from keyword import iskeyword
 
 '''
 November 2021: trying to improve this. pycode_similar not giving good results. Attempt is: difflib.Sequencematcher
+November 2023: more TODOs
+TODO ability to run a diff directly on both files
+    create a .config file where executable is stored
+    finally do packaging.
+TODO migrate viewers into a different module
+TODO revisit the idea of improved diff checking by stripping out all non-keywords
+TODO performance!
 '''
 
 
