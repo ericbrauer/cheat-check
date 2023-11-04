@@ -37,15 +37,6 @@ def get_args():
         sys.exit(1)
     return args
 
-def get_user_dir_list(target):
-    "return a list of user directories"  # TODO: improve. directory doesn't exist, etc.
-    if os.access(target, os.R_OK):
-        try:
-            return os.listdir(target)
-        except PermissionError:
-            print("You do not have permission to view the target directory.")
-            sys.exit(1)
-
 def get_file_list(args):
     "this is an alternate method to get applicable files"
     target_dir = args.target_directory
@@ -152,41 +143,11 @@ def calculate_scores(outer_set):
         rtrn_dict[filenames] = float(pcnt)
     return rtrn_dict
 
-def call_pysim_proc(f1, f2):
-    "I'm doing this b/c the lib is throwin errors and I'm fed up"
-    call_list = ["pycode_similar"]
-    call_list.append(f1)
-    call_list.append(f2)
-    try:
-        result = subprocess.run(call_list, capture_output=True, check=True)
-    except subprocess.CalledProcessError:
-        print("WARNING: pycode_similar has thrown error checking: " + f1 + " with " + f2)
-        return float(0)
-    proc = result.stdout.decode('utf-8').strip()
-    outlines = proc.split('\n')
-    for line in outlines:
-        if 'of ref code structure is plagiarized by candidate' in line:
-            split_it = line.split(' ')
-            pcnt = float(split_it[0])/100
-            # print(pcnt)
-            return pcnt
-
-
-def print_file_results(flist, threshold):
-    target_dir = args.target_directory
-    while len(flist) > 1:
-        target = flist[0]
-        flist.remove(target)
-        short_target = target.replace(target_dir, '')
-        print("Summary for " + short_target)
-        print('-'*(len(short_target)+12))
-        for candidate in flist:
-            percent = call_pysim_proc(target, candidate)
-            if percent is not None and percent/100 > threshold:
-                print("Match found: " + candidate.replace(target_dir, '') + " has a match of " + str(percent) + " %.")
-
 def parse_filename(fname):
     "break filename into tuple"
+    '''
+    This would have worked only with blackboard submission, but not with github submissions. so you can probably removed it.
+    '''
     bname = os.path.basename(fname)
     _, file = os.path.split(fname)
     try:
