@@ -51,9 +51,6 @@ def get_file_list(args):
     target_dir = args.target_directory
     pattern = args.pattern
     exclude = args.exclude
-    # print(target_dir)
-    # print('Pattern: ' + pattern)
-    # print('Excluding: ' + exclude)
     new_list = list()
     for root, dirs, files in os.walk(target_dir):
         for file in files:
@@ -64,20 +61,15 @@ def get_file_list(args):
             else:
                 path = os.path.join(root, file)
                 new_list.append(path)
-    # print(f'Found {len(new_list)} files to test.')
     return new_list
 
 def compare_two_files(f1, f2):
     "new for nov 2021: file comparison using difflib approach"
     if f1 != f2:
         with open(f1) as file1:
-            # c1 = file1.read()
             c1 = filter_comments_from_py(file1)
-            # c1 = strip_nonkw(c1)
         with open(f2) as file2:
-            # c2 = file2.read()
             c2 = filter_comments_from_py(file2)
-            #c2 = strip_nonkw(c2)
         m = sm(None, c1, c2)
         return m.ratio()
     return 0
@@ -128,7 +120,6 @@ def file_contains_errors(file_to_test):
 
 def get_unique_relationships(filename_list):
     "from a list, get all unique one-to-one relationships between files"
-    # print(len(filename_list))
     outer = set()  # using sets to filter duplicates
     for target in filename_list:
         for candidate in filename_list:
@@ -137,14 +128,10 @@ def get_unique_relationships(filename_list):
             else:
                 inner = frozenset((target, candidate))  # these are hashable, allow nesting
                 outer.add(inner)
-    # for item in outer:
-    #     print(item)
-    # print(len(outer))
     return outer
 
 def get_target_relationships(filename_list, target):
     "when specifying a target, get all unique one-to-one relationships to it"
-    # print(len(filename_list))
     outer = set()  # using sets to filter duplicates
     for candidate in filename_list:
         if target == candidate:  # don't match file with itself
@@ -152,9 +139,6 @@ def get_target_relationships(filename_list, target):
         else:
             inner = frozenset((target, candidate))  # these are hashable, allow nesting
             outer.add(inner)
-    # for item in outer:
-    #     print(item)
-    # print(len(outer))
     return outer
 
 def calculate_scores(outer_set):
@@ -162,7 +146,6 @@ def calculate_scores(outer_set):
     rtrn_dict = {}  # {(f1, f2):99, etc.}
     for filenames in outer_set:
         filenames = tuple(filenames)  # needs to hashable
-        # pcnt = call_pysim_proc(filenames[0], filenames[1])  
         pcnt = compare_two_files(filenames[0], filenames[1])
         if pcnt == None:
             pcnt = 0
@@ -235,7 +218,6 @@ def print_dict_results(rdict, threshold):
     width = shutil.get_terminal_size(fallback=(160, 24)).columns  # not using this, print relative paths instead
     middle = 20
     lr = int((width - middle) / 2)
-    # print(lr)
     for index, w in enumerate(sorted(rdict, key=rdict.get, reverse=True), start=1):  # sort the dict by value (pcnt), hi to lo
         if rdict[w] >= threshold:
             common = os.path.commonpath([w[0], w[1]])
@@ -274,27 +256,12 @@ if __name__ == '__main__':
         print('No files to analyze.')
         exit(1)
     errorlist = []  # this will store the files excluded b/c non-zero exit codes
-    # print('The following files contain errors and will be excluded from testing:')
-    # # for tfile in test_list:
-    # #     if file_contains_errors(tfile):
-    # #         print(os.path.relpath(tfile, args.target_directory))
-    # #         # test_list.remove(tfile)  # 
-    # #         errorlist.append(tfile)
-    # print('Files excluded: ')
-    # print(errorlist)
-    # print(len(errorlist))
     if args.bytes:
         test_list = filter_out_smalls(test_list, args.bytes)
     print('Files to test: ' + str(len(test_list)))
-    # input()
     if args.target_file:
         uniques = get_target_relationships(test_list, args.target_file)
     else:
         uniques = get_unique_relationships(test_list)
     results = calculate_scores(uniques)
     print_dict_results(results, threshold)
-    
-
-
-    # print_file_results(test_list, threshold)
-    #print("{} is {:6.2f} %% in common with {}.".format(file1, rtrn_percent*100, file2))
