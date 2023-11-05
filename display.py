@@ -43,7 +43,8 @@ def fancy_print_results(objlist, threshold):
         if r.has_matches():
             #print(r.pretty_matches())
             for match in r.matches():
-                resultlist.append(match)  # collate all matches
+                if match.pcnt >= threshold:  # filter out after auto
+                    resultlist.append(match)  # collate all matches
     resultlist.sort(reverse=True)  # hope this works!
     for i, r in enumerate(resultlist):
         prettify(i, r)

@@ -46,7 +46,8 @@ class FileReport:
         self.filename = filename  # the complete filepath of the file
         self.data = self.filter_comments_from_py(open(filename).read())
         self.similars = []  # list of Results
-        # k: filepath v: percent
+        self.total = 0 # for average calculation
+        self.count = 0
 
     def __repr__(self):
         return self.filename
@@ -74,7 +75,7 @@ class FileReport:
         else: 
             return True
 
-    def cmp_to(self, other, threshold=0.8):
+    def cmp_to(self, other, threshold=0.0):
         if isinstance(other, FileReport):
             c2 = other.data
         else:
@@ -82,6 +83,8 @@ class FileReport:
                 c2 = self.filter_comments_from_py(file2)
         if self.byte_compare(c2, threshold):
             m = sm(None, self.data, c2)
+            self.total += m.ratio()  # used to calculate average
+            self.count += 1
             if m.ratio() >= threshold:
                 self.add_result(other, m.ratio())
 
@@ -90,6 +93,14 @@ class FileReport:
     
     def matches(self):
         return sorted(self.similars, reverse=True)
+
+    def get_avg(self):
+        "what was the average ratio? returns it"
+        try:
+            self.avg = self.total / self.count
+        except ZeroDivisionError:
+            return 0
+        return self.avg
     
 
 def get_args():
@@ -97,7 +108,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="checks for submission similarity, plaigiarism",epilog="Copyright 2020 - Eric Brauer")
     parser.add_argument("-p", "--pattern", default='*.py', help="specify wildcard pattern for files to check. Ex: 'a2_*.py'")
     parser.add_argument("-x", "--exclude", default='*check*.py', help="specify wildcard pattern for files to ignore, like check scripts. Ex: 'checkA2.py'")
-    parser.add_argument("-t", "--threshold", type=float, default='80', help="When to spawn alert, in percent similarity. Default is 80.")
+    parser.add_argument("-t", "--threshold", type=float, help="When to spawn alert, in percent similarity. Default is auto.")
     parser.add_argument("-b", "--bytes", type=int, help="sets a minimum byte size for comparisons. Use this to filter out assignments with no new code.")
     parser.add_argument("-f", "--target-file", help="when you want to compare all other instances to a target file. Can improve performance.")
     parser.add_argument("-s", "--static", action="store_true", help="Outputs results to standard output, as opposed to a menu for analysis. Menu not yet implemented.")
@@ -186,7 +197,7 @@ def get_target_relationships(filename_list, target):
     return x
 
 
-def calculate_scores(file_reports, threshold):
+def calculate_scores(file_reports, threshold=0.0):
     "inside each object, add files and run comparison"
     for fobj in file_reports:
         for tobj in file_reports:
@@ -201,12 +212,19 @@ def filter_out_smalls(input, bytes):
             input.remove(file)
     return input
 
+def get_average(results):
+    total = 0
+    for r in results:
+        total += r.get_avg()
+    return total / len(results)
+
 if __name__ == '__main__':
     args = get_args()
-    threshold = args.threshold
-    if 1.0 <= threshold < 100:  # if user gives pcnt in range 0-100
-        threshold /= 100  # change to 0.0-1.0
-    print(f"Testing with a threshold of {threshold : .1%}.")
+    if args.threshold:
+        threshold = args.threshold
+        if 1.0 <= threshold < 100:  # if user gives pcnt in range 0-100
+            threshold /= 100  # change to 0.0-1.0
+        print(f"Testing with a threshold of {threshold : .1%}.")
     test_list = get_file_list(args)
     if len(test_list) <= 1:
         print('No files to analyze.')
@@ -219,7 +237,14 @@ if __name__ == '__main__':
         uniques = get_target_relationships(test_list, args.target_file)
     else:
         uniques = get_unique_relationships(test_list)
-    results = calculate_scores(uniques, threshold)
+    if args.threshold:
+        results = calculate_scores(uniques, threshold)
+    else:
+        results = calculate_scores(uniques)  # if no -t specified, set to 0.
+    a = get_average(results)
+    print(f'Total average similarity was {a:.2%}.')
+    if not args.threshold:
+        threshold = a  # this sets auto value
     results = d.fancy_print_results(results, threshold)
     if not args.static:
         d.call_diff_exec(results)
