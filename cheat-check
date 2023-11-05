@@ -21,10 +21,99 @@ TODO ability to run a diff directly on both files
 DONE migrate viewers into a different module
 done lol, percentage goes up depending on which file is first. see ldevassy @ 58.9% vs sjohn @ 44.3%
 TODO revisit the idea of improved diff checking by stripping out all non-keywords
-TODO use a class rather than frozenset/tuple/whatever the fuck it is here
+done use a class rather than frozenset/tuple/whatever the fuck it is here: a dictionary of tuple + percentage! Oy Vey
 TODO add more comments
-TODO performance!
+TODO performance! multithreading?
 '''
+
+class FileReport:
+
+    def __init__(self, filename):
+        self.filename = filename  # the complete filepath of the file
+        self.data = self.filter_comments_from_py(open(filename).read())
+        self.similars = {}  # all files with a relationship
+        # k: filepath v: percent
+
+    def __repr__(self):
+        return self.filename
+
+    def __str__(self):
+        return f'{self.filename}: {len(self.similars)}'
+    
+    def add_similar(self, filename):
+        self.similars[filename] = None
+
+    def similar_pcnt(self, filename, pcnt):
+        self.similars[filename] = pcnt
+    
+    def filter_comments_from_py(self, raw: str):
+        "given a file object, remove docstrings and inline comments"
+        docreg = r"[\'\"]{3}(.|\n)+?[\'\"]{3}"  # filter between """ or '''
+        comreg = r"#(\w|\s)*\n"  # filter # to end of line
+        # raw = file_obj.read()
+        raw = sub(docreg, '', raw)
+        raw = sub(comreg, '\n', raw) 
+        return raw
+
+    def byte_compare(self, d2, threshold):
+        "if one file is too smol to be within threshold,"
+        "avoid doing costly sm check"
+        if len(self.data) < len(d2) * threshold:
+            return False
+        elif len(d2) < len(self.data) * threshold:
+            return False
+        else: 
+            return True
+
+    def cmp_to(self, other, threshold=0.8):
+        if isinstance(other, FileReport):
+            c2 = other.data
+        else:
+            with open(other) as file2:
+                c2 = self.filter_comments_from_py(file2)
+        if self.byte_compare(c2, threshold):
+            m = sm(None, self.data, c2)
+            if m.ratio() >= threshold:
+                self.similars[other] = m.ratio()
+
+    def has_matches(self):
+        return len(self.similars) > 0
+    
+    def matches(self):
+        return sorted(self.similars, key=self.similars.get, reverse=True)
+
+    def make_str_uniq(target, comp):
+        "strip out in common btw tar and comp"
+        tl = target.split('/')
+        cl = comp.split('/')
+        out = ''
+        for i, chunk in enumerate(tl):
+            try:
+                if chunk == cl[i]:  # any part of filepath in common to be removed
+                    tl.remove(chunk)
+                    cl.remove(chunk)
+            except IndexError:
+                pass
+        for i, chunk in enumerate(tl):  # this should remove parts of each string
+            try:  # not working yet tho
+                out += chunk.replace(cl[i], '')
+            except IndexError:
+                pass 
+        return out
+
+    def pretty_matches(self, width=160):
+        mid = 20
+        col = int((width - mid) / 2)
+        string = ''
+        for s in self.matches():
+            string += f"{self.filename:<{30}}"
+            string += f"{self.similars[s]:^10.2%}"
+            string += f"{str(s):<{30}}"
+            string += '\n'
+        return string
+
+
+
 
 
 user_list = []
@@ -72,9 +161,11 @@ def compare_two_files(f1, f2):
             c1 = filter_comments_from_py(file1)
         with open(f2) as file2:
             c2 = filter_comments_from_py(file2)
-        m = sm(None, c1, c2)
-        m2 = sm(None, c2, c1)
-        return max(m.ratio(), m2.ratio())
+        if len(c1) < len(c2):
+            m = sm(None, c1, c2)
+        else:
+            m = sm(None, c2, c1)
+        return m.ratio()
     return 0
 
 def new_ratio(c1: list, c2: list) -> float:
@@ -121,39 +212,65 @@ def file_contains_errors(file_to_test):
         valid = False
     return valid 
 
+# def get_unique_relationships(filename_list):
+#     "from a list, get all unique one-to-one relationships between files"
+#     outer = set()  # using sets to filter duplicates
+#     for target in filename_list:
+#         for candidate in filename_list:
+#             if target == candidate:  # don't match file with itself
+#                 pass
+#             else:
+#                 inner = frozenset((target, candidate))  # these are hashable, allow nesting
+#                 outer.add(inner)
+#     return outer
+
 def get_unique_relationships(filename_list):
-    "from a list, get all unique one-to-one relationships between files"
-    outer = set()  # using sets to filter duplicates
+    "switching to OOP solution"
+    new_list = []
     for target in filename_list:
-        for candidate in filename_list:
-            if target == candidate:  # don't match file with itself
-                pass
-            else:
-                inner = frozenset((target, candidate))  # these are hashable, allow nesting
-                outer.add(inner)
-    return outer
+        x = FileReport(target)
+        # for target2 in filename_list:
+        #     if target2 == target:
+        #         pass
+        #     else:
+        #         x.add_similar(target2)
+        new_list.append(x)
+    return new_list
 
 def get_target_relationships(filename_list, target):
-    "when specifying a target, get all unique one-to-one relationships to it"
-    outer = set()  # using sets to filter duplicates
-    for candidate in filename_list:
-        if target == candidate:  # don't match file with itself
-            pass
-        else:
-            inner = frozenset((target, candidate))  # these are hashable, allow nesting
-            outer.add(inner)
-    return outer
+    x = FileReport(target)
+    # for f in filename_list:
+    #     x.add_similar(f)
+    return x
 
-def calculate_scores(outer_set):
-    "take our uniques, call_pysim, return dict. key is the filenames, value is pcnt"
-    rtrn_dict = {}  # {(f1, f2):99, etc.}
-    for filenames in outer_set:
-        filenames = tuple(filenames)  # needs to hashable
-        pcnt = compare_two_files(filenames[0], filenames[1])
-        if pcnt == None:
-            pcnt = 0
-        rtrn_dict[filenames] = float(pcnt)
-    return rtrn_dict
+# def get_target_relationships(filename_list, target):
+#     "when specifying a target, get all unique one-to-one relationships to it"
+#     outer = set()  # using sets to filter duplicates
+#     for candidate in filename_list:
+#         if target == candidate:  # don't match file with itself
+#             pass
+#         else:
+#             inner = frozenset((target, candidate))  # these are hashable, allow nesting
+#             outer.add(inner)
+#     return outer
+
+def calculate_scores(file_reports, threshold):
+    for fobj in file_reports:
+        for tobj in file_reports:
+            if fobj != tobj:
+                fobj.cmp_to(tobj, threshold)
+    return file_reports
+
+# def calculate_scores(outer_set):
+#     "take our uniques, call_pysim, return dict. key is the filenames, value is pcnt"
+#     rtrn_dict = {}  # {(f1, f2):99, etc.}
+#     for filenames in outer_set:
+#         filenames = tuple(filenames)  # needs to hashable
+#         pcnt = compare_two_files(filenames[0], filenames[1])
+#         if pcnt == None:
+#             pcnt = 0
+#         rtrn_dict[filenames] = float(pcnt)
+#     return rtrn_dict
 
 
 def filter_comments_from_py(file_obj):
@@ -193,5 +310,8 @@ if __name__ == '__main__':
         uniques = get_target_relationships(test_list, args.target_file)
     else:
         uniques = get_unique_relationships(test_list)
-    results = calculate_scores(uniques)
+    results = calculate_scores(uniques, threshold)
+    for r in results:
+        if r.has_matches():
+            print(r.pretty_matches())
     d.print_dict_results(results, threshold)

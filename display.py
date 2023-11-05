@@ -58,6 +58,20 @@ def print_dict_results(rdict, threshold):
             midstring = rdict[w]
             print(f"{index:>3}. {left : >30}\t{midstring : ^.1%}\t{right : <30}")
 
+def call_diff_exec(rdict):
+    "open the suspicious files using diff prog"
+    prog = 'code --diff'
+    user_choice = ''
+    max = len(rdict)
+    while user_choice != 'q':
+        user_choice = input(f'Enter selection: 1-{max} or \'q\' to exit: ')
+        try:
+            assert 1 < int(user_choice) <= max
+        except (AssertionError, TypeError):
+            print('Invalid!')
+            continue
+
+
 if __name__ == "__main__":
     # testing
     t1 = 'assignment-1-upwinderjitsingh/code/assignment1.py'
