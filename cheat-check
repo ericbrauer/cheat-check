@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
-from fileinput import filename
 from re import sub, match, findall
 import sys, os, glob, fnmatch
 # import pycode_similar as pysim
-import shutil
-import subprocess
 import argparse
 import ast, traceback
 from difflib import SequenceMatcher as sm
@@ -15,7 +12,7 @@ import display as d
 '''
 November 2021: trying to improve this. pycode_similar not giving good results. Attempt is: difflib.Sequencematcher
 November 2023: more TODOs
-TODO ability to run a diff directly on both files
+done ability to run a diff directly on both files
     create a .config file where executable is stored
     finally do packaging.
 DONE migrate viewers into a different module
@@ -94,41 +91,6 @@ class FileReport:
     def matches(self):
         return sorted(self.similars, reverse=True)
     
-    def make_str_uniq(self, target, comp):
-        "strip out in common btw tar and comp"
-        tl = target.split('/')
-        cl = comp.split('/')
-        out = ''
-        for i, chunk in enumerate(tl):
-            try:
-                if chunk == cl[i]:  # any part of filepath in common to be removed
-                    tl.remove(chunk)
-                    cl.remove(chunk)
-            except IndexError:
-                pass
-        for i, chunk in enumerate(tl):  # this should remove parts of each string
-            try:  # not working yet tho
-                out += chunk.replace(cl[i], '')
-            except IndexError:
-                pass 
-        return out
-
-    def pretty_matches(self, width=160):
-        mid = 20
-        col = int((width - mid) / 2)
-        string = ''
-        for match in self.matches():
-            s, p, o = match.tup()
-            l = self.make_str_uniq(str(s), str(o))
-            r = self.make_str_uniq(str(o), str(s))
-            string += f"{l:<{30}}"
-            string += f"\033[1m{p:^10.2%}"
-            string += f"\033[0m{r:>{30}}"
-            #string += '\n'
-        return string
-
-#user_list = []
-# test_set = set()
 
 def get_args():
     "invoke argparse, passes to obj in global scope"
@@ -165,20 +127,7 @@ def get_file_list(args):
                 new_list.append(path)
     return new_list
 
-def compare_two_files(f1, f2):
-    "new for nov 2021: file comparison using difflib approach"
-    if f1 != f2:
-        with open(f1) as file1:
-            c1 = filter_comments_from_py(file1)
-        with open(f2) as file2:
-            c2 = filter_comments_from_py(file2)
-        if len(c1) < len(c2):
-            m = sm(None, c1, c2)
-        else:
-            m = sm(None, c2, c1)
-        return m.ratio()
-    return 0
-
+'''revisit this solution! didn't work, but a better solution'''
 def new_ratio(c1: list, c2: list) -> float:
     "compare two files, return a value of % in common"
     total = max(len(c1), len(c2))  # the longest file in number of lines creates total
@@ -223,79 +172,28 @@ def file_contains_errors(file_to_test):
         valid = False
     return valid 
 
-# def get_unique_relationships(filename_list):
-#     "from a list, get all unique one-to-one relationships between files"
-#     outer = set()  # using sets to filter duplicates
-#     for target in filename_list:
-#         for candidate in filename_list:
-#             if target == candidate:  # don't match file with itself
-#                 pass
-#             else:
-#                 inner = frozenset((target, candidate))  # these are hashable, allow nesting
-#                 outer.add(inner)
-#     return outer
-
 def get_unique_relationships(filename_list):
-    "switching to OOP solution"
+    "create one new object for each file in our test list"
     new_list = []
     for target in filename_list:
         x = FileReport(target)
-        # for target2 in filename_list:
-        #     if target2 == target:
-        #         pass
-        #     else:
-        #         x.add_similar(target2)
         new_list.append(x)
     return new_list
 
 def get_target_relationships(filename_list, target):
+    "only one object is created, we are comparing everything to it"
     x = FileReport(target)
-    # for f in filename_list:
-    #     x.add_similar(f)
     return x
 
-# def get_target_relationships(filename_list, target):
-#     "when specifying a target, get all unique one-to-one relationships to it"
-#     outer = set()  # using sets to filter duplicates
-#     for candidate in filename_list:
-#         if target == candidate:  # don't match file with itself
-#             pass
-#         else:
-#             inner = frozenset((target, candidate))  # these are hashable, allow nesting
-#             outer.add(inner)
-#     return outer
 
 def calculate_scores(file_reports, threshold):
+    "inside each object, add files and run comparison"
     for fobj in file_reports:
         for tobj in file_reports:
             if fobj != tobj:
                 fobj.cmp_to(tobj, threshold)
     return file_reports
 
-# def calculate_scores(outer_set):
-#     "take our uniques, call_pysim, return dict. key is the filenames, value is pcnt"
-#     rtrn_dict = {}  # {(f1, f2):99, etc.}
-#     for filenames in outer_set:
-#         filenames = tuple(filenames)  # needs to hashable
-#         pcnt = compare_two_files(filenames[0], filenames[1])
-#         if pcnt == None:
-#             pcnt = 0
-#         rtrn_dict[filenames] = float(pcnt)
-#     return rtrn_dict
-
-
-def filter_comments_from_py(file_obj):
-    "given a file object, remove docstrings and inline comments"
-    docreg = r"[\'\"]{3}(.|\n)+?[\'\"]{3}"  # filter between """ or '''
-    comreg = r"#(\w|\s)*\n"  # filter # to end of line
-    raw = file_obj.read()
-    raw = sub(docreg, '', raw)
-    raw = sub(comreg, '\n', raw) 
-    return raw
-
-
-    
-    
 def filter_out_smalls(input, bytes):
     "if a filesize is less than what's specified, remove from set"
     for file in input:
