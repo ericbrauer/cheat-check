@@ -1,5 +1,6 @@
 
 import os, shutil
+import subprocess
 
 def parse_filename(fname):
     "break filename into tuple"
@@ -40,6 +41,33 @@ def make_str_uniq(target, comp):
             pass 
     return out
 
+def prettify(index, result, width=160):
+
+    mid = 20
+    col = int((width - mid) / 2)
+    string = ''
+    s, p, o = result.tup()
+    l = make_str_uniq(str(s), str(o))
+    r = make_str_uniq(str(o), str(s))
+    string += f"{index:>5}. "
+    string += f"{l:<{30}}"
+    string += f"\033[1m{p:^10.2%}"
+    string += f"\033[0m{r:>{30}}"
+    #string += '\n'
+    print(string)
+
+def fancy_print_results(objlist, threshold):
+    resultlist = []
+    for r in objlist:
+        if r.has_matches():
+            #print(r.pretty_matches())
+            for match in r.matches():
+                resultlist.append(match)  # collate all matches
+    resultlist.sort(reverse=True)  # hope this works!
+    for i, r in enumerate(resultlist):
+        prettify(i, r)
+    return resultlist
+
 def print_dict_results(rdict, threshold):
     "all that hard work pays off"
     global args
@@ -58,18 +86,25 @@ def print_dict_results(rdict, threshold):
             midstring = rdict[w]
             print(f"{index:>3}. {left : >30}\t{midstring : ^.1%}\t{right : <30}")
 
-def call_diff_exec(rdict):
+def call_diff_exec(results):
     "open the suspicious files using diff prog"
-    prog = 'code --diff'
+    prog = ['code', '--diff']
     user_choice = ''
-    max = len(rdict)
+    max = len(results)
     while user_choice != 'q':
-        user_choice = input(f'Enter selection: 1-{max} or \'q\' to exit: ')
+        user_choice = input(f'Enter selection: 0-{max-1} or \'q\' to exit: ')
+        if user_choice == 'q':
+            break
         try:
-            assert 1 < int(user_choice) <= max
+            assert 0 <= int(user_choice) < max
         except (AssertionError, TypeError):
             print('Invalid!')
             continue
+        user_choice = int(user_choice)
+        s, p, o = results[user_choice].tup()
+        cmd = prog + [str(s), str(o)]
+        x = subprocess.run(cmd)
+        #s.run()
 
 
 if __name__ == "__main__":
