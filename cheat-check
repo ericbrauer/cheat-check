@@ -191,18 +191,18 @@ def get_unique_relationships(filename_list):
         new_list.append(x)
     return new_list
 
-def get_target_relationships(filename_list, target):
-    "only one object is created, we are comparing everything to it"
-    x = FileReport(target)
-    return x
-
-
-def calculate_scores(file_reports, threshold=0.0):
+def calculate_scores(file_reports, threshold=0.0, target=None):
     "inside each object, add files and run comparison"
-    for fobj in file_reports:
-        for tobj in file_reports:
+    if target:
+        tobj = FileReport(target)
+        for fobj in file_reports:
             if fobj != tobj:
                 fobj.cmp_to(tobj, threshold)
+    else:            
+        for fobj in file_reports:
+            for tobj in file_reports:
+                if fobj != tobj:
+                    fobj.cmp_to(tobj, threshold)
     return file_reports
 
 def filter_out_smalls(input, bytes):
@@ -233,12 +233,13 @@ if __name__ == '__main__':
     if args.bytes:
         test_list = filter_out_smalls(test_list, args.bytes)
     print('Files to test: ' + str(len(test_list)))
-    if args.target_file:
-        uniques = get_target_relationships(test_list, args.target_file)
-    else:
-        uniques = get_unique_relationships(test_list)
-    if args.threshold:
-        results = calculate_scores(uniques, threshold)
+    uniques = get_unique_relationships(test_list)
+    if args.target_file and args.threshold:
+        results = calculate_scores(uniques, threshold=threshold, target=args.target_file)
+    elif args.target_file:
+        results = calculate_scores(uniques, target=args.target_file)
+    elif args.threshold:
+        results = calculate_scores(uniques, threshold=threshold)
     else:
         results = calculate_scores(uniques)  # if no -t specified, set to 0.
     a = get_average(results)
